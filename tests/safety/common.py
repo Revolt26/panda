@@ -41,7 +41,79 @@ class CANPackerPanda(CANPacker):
     msg = self.make_can_msg(name_or_addr, bus, values, counter=-1)
     return package_can_msg(msg)
 
-class PandaSafetyTest(unittest.TestCase):
+class PandaSafetyTestBase(unittest.TestCase):
+  @classmethod
+  def setUpClass(cls):
+    if cls.__name__ == "PandaSafetyTestBase":
+      cls.safety = None
+      raise unittest.SkipTest
+
+  def _rx(self, msg):
+    return self.safety.safety_rx_hook(msg)
+
+  def _tx(self, msg):
+    return self.safety.safety_tx_hook(msg)
+
+
+class InterceptorSafetyTest(PandaSafetyTestBase):
+
+  INTERCEPTOR_THRESHOLD = 0
+
+  @classmethod
+  def setUpClass(cls):
+    if cls.__name__ == "InterceptorSafetyTest":
+      cls.safety = None
+      raise unittest.SkipTest
+
+  @abc.abstractmethod
+  def _interceptor_msg(self, gas, addr):
+    pass
+
+  def test_prev_gas_interceptor(self):
+    self._rx(self._interceptor_msg(0x0, 0x201))
+    self.assertFalse(self.safety.get_gas_interceptor_prev())
+    self._rx(self._interceptor_msg(0x1000, 0x201))
+    self.assertTrue(self.safety.get_gas_interceptor_prev())
+    self._rx(self._interceptor_msg(0x0, 0x201))
+    self.safety.set_gas_interceptor_detected(False)
+
+  def test_disengage_on_gas_interceptor(self):
+    for g in range(0, 0x1000):
+      self._rx(self._interceptor_msg(0, 0x201))
+      self.safety.set_controls_allowed(True)
+      self._rx(self._interceptor_msg(g, 0x201))
+      remain_enabled = g <= self.INTERCEPTOR_THRESHOLD
+      self.assertEqual(remain_enabled, self.safety.get_controls_allowed())
+      self._rx(self._interceptor_msg(0, 0x201))
+      self.safety.set_gas_interceptor_detected(False)
+
+  def test_unsafe_mode_no_disengage_on_gas_interceptor(self):
+    self.safety.set_controls_allowed(True)
+    self.safety.set_unsafe_mode(UNSAFE_MODE.DISABLE_DISENGAGE_ON_GAS)
+    for g in range(0, 0x1000):
+      self._rx(self._interceptor_msg(g, 0x201))
+      self.assertTrue(self.safety.get_controls_allowed())
+      self._rx(self._interceptor_msg(0, 0x201))
+      self.safety.set_gas_interceptor_detected(False)
+    self.safety.set_unsafe_mode(UNSAFE_MODE.DEFAULT)
+
+  def test_allow_engage_with_gas_interceptor_pressed(self):
+    self._rx(self._interceptor_msg(0x1000, 0x201))
+    self.safety.set_controls_allowed(1)
+    self._rx(self._interceptor_msg(0x1000, 0x201))
+    self.assertTrue(self.safety.get_controls_allowed())
+    self._rx(self._interceptor_msg(0, 0x201))
+
+  def test_gas_interceptor_safety_check(self):
+    self.safety.set_controls_allowed(0)
+    self.assertTrue(self._tx(self._interceptor_msg(0, 0x200)))
+    self.assertFalse(self._tx(self._interceptor_msg(0x1000, 0x200)))
+    self.safety.set_controls_allowed(1)
+    self.assertTrue(self._tx(self._interceptor_msg(0x1000, 0x200)))
+
+
+
+class PandaSafetyTest(PandaSafetyTestBase):
   TX_MSGS = None
   STANDSTILL_THRESHOLD = None
   GAS_PRESSED_THRESHOLD = 0
@@ -55,12 +127,6 @@ class PandaSafetyTest(unittest.TestCase):
     if cls.__name__ == "PandaSafetyTest":
       cls.safety = None
       raise unittest.SkipTest
-
-  def _rx(self, msg):
-    return self.safety.safety_rx_hook(msg)
-
-  def _tx(self, msg):
-    return self.safety.safety_tx_hook(msg)
 
   @abc.abstractmethod
   def _brake_msg(self, brake):
