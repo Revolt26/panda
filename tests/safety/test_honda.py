@@ -227,16 +227,6 @@ class TestHondaNidecSafety(TestHondaSafety, common.InterceptorSafetyTest):
           self.assertEqual(send, self._tx(self._send_brake_msg(brake)))
     self.safety.set_honda_fwd_brake(False)
 
-  def test_gas_interceptor_safety_check(self):
-    for gas in np.arange(0, 4000, 100):
-      for controls_allowed in [True, False]:
-        self.safety.set_controls_allowed(controls_allowed)
-        if controls_allowed:
-          send = True
-        else:
-          send = gas == 0
-        self.assertEqual(send, self._tx(self._interceptor_msg(gas, 0x200)))
-
   def test_tx_hook_on_interceptor_pressed(self):
     for mode in [UNSAFE_MODE.DEFAULT, UNSAFE_MODE.DISABLE_DISENGAGE_ON_GAS]:
       self.safety.set_unsafe_mode(mode)
