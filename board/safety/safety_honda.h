@@ -265,6 +265,7 @@ static int honda_tx_hook(CAN_FIFOMailBox_TypeDef *to_send) {
 static void honda_nidec_init(int16_t param) {
   UNUSED(param);
   controls_allowed = false;
+  gas_interceptor_detected = false;
   relay_malfunction_reset();
   honda_hw = HONDA_N_HW;
   honda_alt_brake_msg = false;
